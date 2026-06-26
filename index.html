@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Home Dashboard</title>
+
+<link rel="manifest" href="/manifest.json">
+<script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+<script>
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  OneSignalDeferred.push(function(OneSignal) {
+    OneSignal.init({
+      appId: "69a85641-a471-4e92-bd71-e672eedf95fd",
+      notifyButton: { enable: true }
+    });
+  });
+</script>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  /* ===== RESET & BIẾN MÀU ===== */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --surface2:  #21262d;
+    --border:    #30363d;
+    --accent:    #58a6ff;
+    --accent2:   #3fb950;
+    --warn:      #f85149;
+    --yellow:    #e3b341;
+    --purple:    #bc8cff;
+    --text:      #c9d1d9;
+    --text-dim:  #6e7681;
+    --on-color:  #3fb950;
+    --off-color: #f85149;
+    --radius:    12px;
+    --shadow:    0 4px 24px rgba(0,0,0,0.4);
+  }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 0;
+  }
+
+  /* ===== LAYOUT CHÍNH ===== */
+  .app-shell {
+    display: grid;
+    grid-template-rows: 64px 1fr;
+    grid-template-columns: 260px 1fr;
+    grid-template-areas:
+      "header header"
+      "sidebar main";
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ===== HEADER ===== */
+  header {
+    grid-area: header;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    z-index: 100;
+  }
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #fff;
+  }
+  .logo-icon { font-size: 1.5rem; }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    padding: 4px 12px;
+    border-radius: 20px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    transition: all 0.3s;
+  }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    transition: background 0.3s;
+  }
+  .status-badge.online .status-dot  { background: var(--on-color); box-shadow: 0 0 6px var(--on-color); }
+  .status-badge.offline .status-dot { background: var(--off-color); }
+
+  .stat-chip {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+  }
+  .stat-chip span { color: var(--accent); font-weight: 600; }
+
+  /* ===== SIDEBAR ===== */
+  aside {
+    grid-area: sidebar;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .sidebar-section-title {
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding: 16px 16px 8px;
+  }
+  .log-box {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 8px 8px;
+  }
+  .log-box::-webkit-scrollbar { width: 4px; }
+  .log-box::-webkit-scrollbar-track { background: transparent; }
+  .log-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .log-item {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 6px 8px;
+    border-radius: 6px;
+    margin-bottom: 2px;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    border-left: 2px solid transparent;
+    transition: background 0.2s;
+  }
+  .log-item:hover { background: var(--surface2); }
+  .log-time { color: var(--text-dim); white-space: nowrap; flex-shrink: 0; }
+  .log-type {
+    font-size: 0.68rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .log-type.KẾT\ NỐI   { background: rgba(88,166,255,0.15); color: var(--accent); }
+  .log-type.NGẮT\ KẾT\ NỐI { background: rgba(248,81,73,0.15); color: var(--warn); }
+  .log-type.THIẾT\ BỊ  { background: rgba(63,185,80,0.15); color: var(--on-color); }
+  .log-type.CẤU\ HÌNH  { background: rgba(227,179,65,0.15); color: var(--yellow); }
+  .log-type.ĐIỀU\ KHIỂN{ background: rgba(188,140,255,0.15); color: var(--purple); }
+  .log-type.XÓA        { background: rgba(248,81,73,0.12); color: var(--warn); }
+  .log-content { color: var(--text); }
+
+  /* ===== KHU VỰC CHÍNH ===== */
+  main {
+    grid-area: main;
+    overflow-y: auto;
+    padding: 24px;
+  }
+  main::-webkit-scrollbar { width: 6px; }
+  main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .section-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+  }
+  .device-count {
+    font-size: 0.78rem;
+    color: var(--text-dim);
+  }
+
+  /* ===== GRID THIẾT BỊ ===== */
+  .device-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+
+  /* ===== CARD THIẾT BỊ ===== */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    position: relative;
+    transition: border-color 0.25s, box-shadow 0.25s;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    background: var(--card-accent, var(--border));
+    border-radius: var(--radius) var(--radius) 0 0;
+  }
+  .card:hover {
+    border-color: var(--card-accent, var(--accent));
+    box-shadow: 0 0 0 1px var(--card-accent, var(--accent)), var(--shadow);
+  }
+
+  .card[data-type="cong_tac"] { --card-accent: var(--accent); }
+  .card[data-type="cam_bien"] { --card-accent: var(--purple); }
+  .card[data-type="bao_dong"] { --card-accent: var(--warn); }
+  .card[data-type="servo"]    { --card-accent: var(--yellow); }
+  .card[data-type="unconfigured"] {
+    --card-accent: var(--yellow);
+    border-style: dashed;
+    background: rgba(227,179,65,0.04);
+  }
+
+  .card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .card-icon {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+  }
+  .card-menu-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 1rem;
+    line-height: 1;
+    transition: color 0.2s;
+  }
+  .card-menu-btn:hover { color: var(--warn); background: rgba(248,81,73,0.1); }
+
+  .card-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card-id {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    font-family: monospace;
+  }
+
+  .value-display {
+    font-size: 2.2rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin: 12px 0;
+    line-height: 1;
+    letter-spacing: -0.02em;
+    transition: color 0.3s;
+  }
+  .value-display .unit {
+    font-size: 1rem;
+    font-weight: 400;
+    color: var(--text-dim);
+    margin-left: 3px;
+  }
+  .value-display.on  { color: var(--on-color); }
+  .value-display.off { color: var(--off-color); }
+  .value-display.warn { color: var(--warn); animation: pulse-warn 1s ease infinite; }
+  @keyframes pulse-warn { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+  .last-update {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+    margin-bottom: 12px;
+  }
+
+  .ctrl-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 8px;
+  }
+  .btn {
+    padding: 8px 0;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--surface2);
+    color: var(--text);
+    transition: all 0.15s;
+  }
+  .btn:hover { filter: brightness(1.2); transform: translateY(-1px); }
+  .btn:active { transform: translateY(0); }
+  .btn.on  { background: rgba(63,185,80,0.15);  border-color: var(--on-color);  color: var(--on-color); }
+  .btn.off { background: rgba(248,81,73,0.15); border-color: var(--off-color); color: var(--off-color); }
+  .btn.full { grid-column: 1/-1; background: var(--accent); border-color: var(--accent); color: #000; font-weight: 700; }
+  .btn.full:hover { background: #79b8ff; border-color: #79b8ff; }
+
+  .config-hint { font-size: 0.78rem; color: var(--yellow); margin-bottom: 10px; }
+  .config-form input, .config-form select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    color: var(--text);
+    font-size: 0.82rem;
+    margin-bottom: 6px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .config-form input:focus, .config-form select:focus { border-color: var(--accent); }
+  .config-form select option { background: var(--surface2); }
+
+  .empty-state {
+    grid-column: 1/-1;
+    text-align: center;
+    padding: 48px 24px;
+    color: var(--text-dim);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+  }
+  .empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; }
+  .empty-state p { font-size: 0.85rem; margin-top: 6px; }
+
+  #toast-container {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 9999;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 0.82rem;
+    color: var(--text);
+    box-shadow: var(--shadow);
+    transform: translateX(120%);
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    pointer-events: auto;
+  }
+  .toast.show { transform: translateX(0); }
+  .toast.success { border-left-color: var(--on-color); }
+  .toast.warn    { border-left-color: var(--warn); }
+
+  @media (max-width: 768px) {
+    .app-shell {
+      grid-template-columns: 1fr;
+      grid-template-rows: 56px auto 1fr;
+      grid-template-areas: "header" "sidebar" "main";
+      height: auto;
+      overflow: auto;
+    }
+    aside { max-height: 200px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <header>
+    <div class="logo">
+      <span class="logo-icon">🏡</span>
+      Smart Home
+    </div>
+    <div class="header-right">
+      <span class="stat-chip" id="stat-devices">Thiết bị: <span id="count-total">0</span></span>
+      <span class="stat-chip" id="stat-online">Đang hoạt động: <span id="count-on">0</span></span>
+      <div class="status-badge offline" id="status-badge">
+        <div class="status-dot"></div>
+        <span id="status-text">Đang kết nối...</span>
+      </div>
+    </div>
+  </header>
+
+  <aside>
+    <div class="sidebar-section-title">📋 Nhật ký hệ thống</div>
+    <div class="log-box" id="log-box">
+      <div class="log-item">
+        <span class="log-time">--:--:--</span>
+        <span class="log-type">INFO</span>
+        <span class="log-content">Đang khởi động...</span>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <div id="section-new" style="display:none; margin-bottom:28px;">
+      <div class="section-header">
+        <span class="section-label">⚠️ Thiết Bị Mới Phát Hiện</span>
+        <span class="device-count" id="count-new">0 thiết bị</span>
+      </div>
+      <div class="device-grid" id="grid-new"></div>
+    </div>
+
+    <div id="section-sensor" style="display:none; margin-bottom:28px;">
+      <div class="section-header">
+        <span class="section-label">📊 Cảm Biến & Môi Trường</span>
+        <span class="device-count" id="count-sensor">0 cảm biến</span>
+      </div>
+      <div class="device-grid" id="grid-sensor"></div>
+    </div>
+
+    <div id="section-switch" style="display:none; margin-bottom:28px;">
+      <div class="section-header">
+        <span class="section-label">💡 Thiết Bị Điều Khiển</span>
+        <span class="device-count" id="count-switch">0 thiết bị</span>
+      </div>
+      <div class="device-grid" id="grid-switch"></div>
+    </div>
+
+    <div id="empty-state">
+      <div style="text-align:center; padding:80px 24px; color:var(--text-dim);">
+        <div style="font-size:3.5rem; margin-bottom:16px;">📡</div>
+        <div style="font-size:1.1rem; font-weight:600; color:var(--text);">Chưa có thiết bị nào</div>
+        <p style="margin-top:8px; font-size:0.85rem;">Kết nối ESP32 vào mạng để thiết bị tự động hiện ở đây</p>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+const socket = io(window.location.origin, { transports: ['websocket', 'polling'] });
+
+const statusBadge = document.getElementById('status-badge');
+const statusText  = document.getElementById('status-text');
+
+socket.on('connect', () => {
+  statusBadge.className = 'status-badge online';
+  statusText.innerText = 'Trực tuyến';
+  showToast('✅ Đã kết nối tới máy chủ', 'success');
+});
+
+socket.on('disconnect', () => {
+  statusBadge.className = 'status-badge offline';
+  statusText.innerText  = 'Mất kết nối';
+  showToast('❌ Mất kết nối tới máy chủ', 'warn');
+});
+
+const state = {};
+
+socket.on('current_devices', (devices) => {
+  devices.forEach(d => { state[d.id] = d; });
+  renderAll();
+});
+
+socket.on('device_registered', (d) => {
+  if (!state[d.id]) {
+    state[d.id] = d;
+    renderDevice(d);
+    updateStats();
+    showToast(`📡 Phát hiện: ${d.ten_hien_thi || d.id}`);
+  }
+});
+
+socket.on('device_configured_success', (d) => {
+  state[d.id] = d;
+  const oldCard = document.getElementById(`card-${d.id}`);
+  if (oldCard) oldCard.remove();
+  renderDevice(d);
+  updateStats();
+  showToast(`✅ Đã kích hoạt: ${d.ten_hien_thi}`, 'success');
+});
+
+socket.on('state_changed', (data) => {
+  if (state[data.id]) state[data.id].trang_thai = data.value;
+  const valEl = document.getElementById(`val-${data.id}`);
+  if (!valEl) return;
+
+  const d = state[data.id];
+  if (data.value === 'ON' || data.value === 'OFF') {
+    valEl.innerHTML = data.value;
+    valEl.className = `value-display ${data.value.toLowerCase()}`;
+  } else {
+    const don_vi = d ? d.don_vi || '' : '';
+    const numVal = parseFloat(data.value);
+    
+    let isWarn = false;
+    if (d && d.id === 'khi_gas' && numVal > 1500) isWarn = true;
+    if (d && d.id === 'nhiet_do' && numVal > 35) isWarn = true;
+
+    valEl.className = `value-display ${isWarn ? 'warn' : ''}`;
+    valEl.innerHTML = `${isNaN(numVal) ? '--' : numVal.toFixed(1)}<span class="unit">${don_vi}</span>`;
+  }
+  
+  const tsEl = document.getElementById(`ts-${data.id}`);
+  if (tsEl) tsEl.innerText = `Cập nhật: ${new Date().toLocaleTimeString('vi-VN')}`;
+
+  updateStats();
+});
+
+socket.on('device_deleted', ({ id }) => {
+  delete state[id];
+  const card = document.getElementById(`card-${id}`);
+  if (card) card.remove();
+  updateStats();
+  renderSectionVisibility();
+});
+
+// THÊM: Lắng nghe cảnh báo từ ESP32 để hiện Toast đỏ trên màn hình
+socket.on('alert_broadcast', (data) => {
+  showToast(`🚨 ${data.type}: ${data.message}`, 'warn');
+});
+
+socket.on('log_history', (logs) => {
+  const box = document.getElementById('log-box');
+  box.innerHTML = '';
+  logs.slice().reverse().forEach(addLogItem);
+});
+socket.on('log_event', (entry) => {
+  addLogItem(entry);
+});
+
+function getDeviceIcon(loai, id) {
+  const iconMap = {
+    'nhiet_do': '🌡️', 'do_am': '💧', 'khi_gas': '💨',
+    'den': '💡', 'quat': '🌀', 'servo': '🚪', 'bao_dong': '🔔'
+  };
+  if (iconMap[id]) return iconMap[id];
+  const typeMap = {
+    'cam_bien': '📊', 'cong_tac': '💡', 'servo': '🚪', 'bao_dong': '🔔', 'unconfigured': '❓'
+  };
+  return typeMap[loai] || '📦';
+}
+
+function getTargetGrid(d) {
+  if (d.trang_thai_cau_hinh === 'unconfigured') return document.getElementById('grid-new');
+  if (d.loai_thiet_bi === 'cam_bien')           return document.getElementById('grid-sensor');
+  return document.getElementById('grid-switch');
+}
+
+function renderDevice(d) {
+  const grid = getTargetGrid(d);
+  if (!grid) return;
+  if (document.getElementById(`card-${d.id}`)) return;
+
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.id = `card-${d.id}`;
+  card.dataset.type = d.trang_thai_cau_hinh === 'unconfigured' ? 'unconfigured' : d.loai_thiet_bi;
+
+  if (d.trang_thai_cau_hinh === 'unconfigured') {
+    card.innerHTML = buildUnconfiguredCard(d);
+  } else if (d.loai_thiet_bi === 'cam_bien') {
+    card.innerHTML = buildSensorCard(d);
+  } else {
+    card.innerHTML = buildSwitchCard(d);
+  }
+
+  grid.appendChild(card);
+  renderSectionVisibility();
+  updateStats();
+  document.getElementById('empty-state').style.display = 'none';
+}
+
+function buildUnconfiguredCard(d) {
+  return `
+    <div class="card-header">
+      <div class="card-icon">❓</div>
+      <button class="card-menu-btn" onclick="xoaThietBi('${d.id}')" title="Xóa">✕</button>
+    </div>
+    <div class="card-name">Thiết Bị Chưa Xác Định</div>
+    <div class="card-id">${d.id}</div>
+    <div class="config-hint" style="margin-top:10px;">📌 Đặt tên để kích hoạt thiết bị</div>
+    <div class="config-form">
+      <input type="text" id="name_${d.id}" placeholder="Tên thiết bị (vd: Đèn Phòng Khách)">
+      <select id="type_${d.id}">
+        <option value="cong_tac">💡 Công tắc / Relay</option>
+        <option value="cam_bien">📊 Cảm biến</option>
+        <option value="bao_dong">🔔 Báo động</option>
+        <option value="servo">🚪 Servo / Khóa cửa</option>
+      </select>
+      <button class="btn full" onclick="xacNhanCauHinh('${d.id}')">LƯU &amp; KÍCH HOẠT</button>
+    </div>
+  `;
+}
+
+function buildSensorCard(d) {
+  const val = d.trang_thai !== undefined ? d.trang_thai : '--';
+  const numVal = parseFloat(val);
+  const don_vi = d.don_vi || '';
+  const isWarn = (d.id === 'khi_gas' && numVal > 1500) || (d.id === 'nhiet_do' && numVal > 35);
+  return `
+    <div class="card-header">
+      <div class="card-icon">${getDeviceIcon(d.loai_thiet_bi, d.id)}</div>
+      <button class="card-menu-btn" onclick="xoaThietBi('${d.id}')" title="Xóa">✕</button>
+    </div>
+    <div class="card-name">${d.ten_hien_thi}</div>
+    <div class="card-id">${d.id}</div>
+    <div class="value-display ${isWarn ? 'warn' : ''}" id="val-${d.id}">
+      ${isNaN(numVal) ? '--' : numVal.toFixed(1)}<span class="unit">${don_vi}</span>
+    </div>
+    <div class="last-update" id="ts-${d.id}">Chờ dữ liệu...</div>
+  `;
+}
+
+function buildSwitchCard(d) {
+  const trangThai = d.trang_thai || 'OFF';
+  const color = trangThai === 'ON' ? 'on' : 'off';
+  return `
+    <div class="card-header">
+      <div class="card-icon">${getDeviceIcon(d.loai_thiet_bi, d.id)}</div>
+      <button class="card-menu-btn" onclick="xoaThietBi('${d.id}')" title="Xóa">✕</button>
+    </div>
+    <div class="card-name">${d.ten_hien_thi}</div>
+    <div class="card-id">${d.id}</div>
+    <div class="value-display ${color}" id="val-${d.id}">${trangThai}</div>
+    <div class="last-update" id="ts-${d.id}">Chờ lệnh...</div>
+    <div class="ctrl-row">
+      <button class="btn on"  onclick="guiLenh('${d.id}', 'ON')">BẬT</button>
+      <button class="btn off" onclick="guiLenh('${d.id}', 'OFF')">TẮT</button>
+    </div>
+  `;
+}
+
+function renderAll() {
+  ['grid-new', 'grid-sensor', 'grid-switch'].forEach(id => {
+    document.getElementById(id).innerHTML = '';
+  });
+
+  const devices = Object.values(state);
+  if (devices.length === 0) {
+    document.getElementById('empty-state').style.display = 'block';
+    renderSectionVisibility();
+    updateStats();
+    return;
+  }
+  document.getElementById('empty-state').style.display = 'none';
+  devices.forEach(d => renderDevice(d));
+  updateStats();
+}
+
+function renderSectionVisibility() {
+  const hasNew    = document.getElementById('grid-new').children.length > 0;
+  const hasSensor = document.getElementById('grid-sensor').children.length > 0;
+  const hasSwitch = document.getElementById('grid-switch').children.length > 0;
+  const hasAny    = hasNew || hasSensor || hasSwitch;
+
+  document.getElementById('section-new').style.display    = hasNew    ? 'block' : 'none';
+  document.getElementById('section-sensor').style.display = hasSensor ? 'block' : 'none';
+  document.getElementById('section-switch').style.display = hasSwitch ? 'block' : 'none';
+  document.getElementById('empty-state').style.display    = hasAny    ? 'none'  : 'block';
+
+  document.getElementById('count-new').innerText    = document.getElementById('grid-new').children.length + ' thiết bị';
+  document.getElementById('count-sensor').innerText = document.getElementById('grid-sensor').children.length + ' cảm biến';
+  document.getElementById('count-switch').innerText = document.getElementById('grid-switch').children.length + ' thiết bị';
+}
+
+function updateStats() {
+  const devices = Object.values(state);
+  document.getElementById('count-total').innerText = devices.length;
+  const onCount = devices.filter(d => d.trang_thai === 'ON').length;
+  document.getElementById('count-on').innerText = onCount;
+}
+
+function xacNhanCauHinh(id) {
+  const ten  = document.getElementById(`name_${id}`).value.trim();
+  const loai = document.getElementById(`type_${id}`).value;
+  if (!ten) { showToast('⚠️ Vui lòng điền tên thiết bị!', 'warn'); return; }
+  socket.emit('setup_new_device', { id, ten, loai });
+}
+
+function guiLenh(id, lenh) { socket.emit('control_device', { id, command: lenh }); }
+
+function xoaThietBi(id) {
+  if (!confirm(`Xóa thiết bị "${id}" khỏi danh sách?`)) return;
+  socket.emit('delete_device', { id });
+}
+
+function addLogItem(entry) {
+  const box = document.getElementById('log-box');
+  const el = document.createElement('div');
+  el.className = 'log-item';
+  const safeType = (entry.loai || 'INFO').replace(/</g,'&lt;');
+  const safeContent = (entry.noi_dung || '').replace(/</g,'&lt;');
+  el.innerHTML = `
+    <span class="log-time">${entry.thoiGian}</span>
+    <span class="log-type ${safeType}">${safeType}</span>
+    <span class="log-content">${safeContent}</span>
+  `;
+  box.insertBefore(el, box.firstChild);
+  while (box.children.length > 50) box.removeChild(box.lastChild);
+}
+
+function showToast(msg, type = '') {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerText = msg;
+  container.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 400);
+  }, 3000);
+}
+</script>
+</body>
+</html>
