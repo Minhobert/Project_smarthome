@@ -536,10 +536,12 @@ socket.on('device_deleted', ({ id }) => {
 });
 
 // THÊM: Lắng nghe cảnh báo từ ESP32 để hiện Toast đỏ trên màn hình
+// THÊM: Lắng nghe cảnh báo và thông báo từ ESP32 để hiện Toast
 socket.on('alert_broadcast', (data) => {
-  showToast(`🚨 ${data.type}: ${data.message}`, 'warn');
+  const icon = data.level === 'info' ? 'ℹ️' : '🚨';
+  const toastType = data.level === 'info' ? 'success' : 'warn';
+  showToast(`${icon} ${data.type}: ${data.message}`, toastType);
 });
-
 socket.on('log_history', (logs) => {
   const box = document.getElementById('log-box');
   box.innerHTML = '';
